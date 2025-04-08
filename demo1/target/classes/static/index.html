@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>票务统计</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .form-group { margin-bottom: 15px; }
+        label { display: inline-block; width: 100px; }
+        input[type="date"] { padding: 5px; margin-right: 10px; }
+        button { padding: 8px 15px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #45a049; }
+        .result { margin-top: 20px; padding: 15px; border: 1px solid #ddd; }
+        .loading { display: none; color: #666; }
+        .charts-container { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 30px; }
+        .chart-wrapper { flex: 1; min-width: 300px; }
+        .chart-container { height: 400px; margin-bottom: 20px; }
+        .daily-sales { padding: 20px; background-color: #f9f9f9; border-radius: 8px; text-align: center; }
+        .daily-sales h3 { margin: 0; color: #333; }
+        .daily-sales .amount { font-size: 24px; color: #4CAF50; margin: 10px 0; }
+    </style>
+    <!-- 引入 Chart.js 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>票务统计查询</h1>
+        <div class="form-group">
+            <label for="startDate">开始日期：</label>
+            <input type="date" id="startDate" required>
+        </div>
+        <div class="form-group">
+            <label for="endDate">结束日期：</label>
+            <input type="date" id="endDate" required>
+        </div>
+        <button onclick="queryData()">查询</button>
+        <div id="loading" class="loading">加载中...</div>
+        <div id="result" class="result">
+            <h3>统计结果</h3>
+            <p style="font-size: 18px; color: #4CAF50; font-weight: bold;">销售金额：<span id="totalAmount">0</span> 元</p>
+        </div>
+        
+        <!-- 当日销售额显示 -->
+        <div class="daily-sales">
+            <h3>当日销售额</h3>
+            <div class="amount" id="dailySalesAmount">¥0</div>
+        </div>
+
+        <!-- 图表容器 -->
+        <div class="charts-container">
+            <div class="chart-wrapper">
+                <h3>月度销售额</h3>
+                <div class="chart-container">
+                    <canvas id="monthChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-wrapper">
+                <h3>周度销售额</h3>
+                <div class="chart-container">
+                    <canvas id="weekChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let monthChart = null;
+        let weekChart = null;
+        
+        async function loadSalesChart() {
+            try {
+                const response = await fetch('http://localhost:8080/api/profitshare/sales-by-period', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('获取销售额数据失败');
+                }
+                
+                const data = await response.json();
+                console.log('销售额数据:', data);
+
+                // 更新当日销售额显示
+                document.getElementById('dailySalesAmount').textContent = 
+                    new Intl.NumberFormat('zh-CN', {
+                        style: 'currency',
+                        currency: 'CNY',
+                        maximumFractionDigits: 0
+                    }).format(data['当日销售额']);
+
+                // 计算最大值，用于设置刻度范围
+                const maxValue = Math.max(data['当月销售额'], data['本周销售额']);
+
+                // 更新月度销售额图表
+                if (monthChart) {
+                    monthChart.destroy();
+                }
+                const monthCtx = document.getElementById('monthChart').getContext('2d');
+                monthChart = new Chart(monthCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['当月销售额'],
+                        datasets: [{
+                            data: [data['当月销售额']],
+                            backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: createChartOptions('月度销售额', maxValue)
+                });
+
+                // 更新周度销售额图表
+                if (weekChart) {
+                    weekChart.destroy();
+                }
+                const weekCtx = document.getElementById('weekChart').getContext('2d');
+                weekChart = new Chart(weekCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['本周销售额'],
+                        datasets: [{
+                            data: [data['本周销售额']],
+                            backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: createChartOptions('周度销售额', maxValue)
+                });
+            } catch (error) {
+                console.error('加载销售额图表失败:', error);
+                document.querySelector('.charts-container').innerHTML = 
+                    '<div style="color: red; text-align: center; padding: 20px;">加载销售额图表失败，请稍后重试</div>';
+            }
+        }
+
+        function createChartOptions(title, maxValue) {
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: maxValue, // 设置最大值
+                        title: {
+                            display: true,
+                            text: '销售额（元）'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return new Intl.NumberFormat('zh-CN', {
+                                    style: 'currency',
+                                    currency: 'CNY',
+                                    maximumFractionDigits: 0
+                                }).format(value);
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: title,
+                        font: {
+                            size: 16
+                        }
+                    },
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return new Intl.NumberFormat('zh-CN', {
+                                    style: 'currency',
+                                    currency: 'CNY',
+                                    maximumFractionDigits: 0
+                                }).format(context.raw);
+                            }
+                        }
+                    }
+                }
+            };
+        }
+
+        async function queryData() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+
+            if (!startDate || !endDate) {
+                alert('请选择开始日期和结束日期');
+                return;
+            }
+
+            loading.style.display = 'block';
+            result.style.display = 'none';
+
+            try {
+                const response = await fetch(`http://localhost:8080/api/business-data/summary?startDate=${startDate}&endDate=${endDate}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('获取数据失败');
+                }
+
+                const data = await response.json();
+                
+                // 更新销售金额，使用货币格式
+                document.getElementById('totalAmount').textContent = 
+                    new Intl.NumberFormat('zh-CN', {
+                        style: 'currency',
+                        currency: 'CNY',
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }).format(data.totalPayment || 0).replace('¥', '');
+
+                result.style.display = 'block';
+                loading.style.display = 'none';
+                
+                // 重新加载销售额图表
+                loadSalesChart();
+            } catch (error) {
+                console.error('查询出错:', error);
+                loading.style.display = 'none';
+                result.innerHTML = `<div style="color: red;">查询失败：${error.message}</div>`;
+            }
+        }
+
+        // 设置默认日期范围（当前月份）
+        window.onload = function() {
+            const today = new Date();
+            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+            const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+            document.getElementById('startDate').value = firstDay.toISOString().split('T')[0];
+            document.getElementById('endDate').value = lastDay.toISOString().split('T')[0];
+            
+            // 加载销售额图表
+            loadSalesChart();
+        };
+    </script>
+</body>
+</html>

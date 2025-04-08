@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>票务销售统计</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .date-range {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .chart-container {
+            margin: 20px 0;
+            height: 400px;
+        }
+        .ticket-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .ticket-item {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .ticket-item h3 {
+            margin: 0;
+            color: #333;
+        }
+        .ticket-item p {
+            margin: 10px 0 0;
+            font-size: 24px;
+            color: #007bff;
+        }
+        .payment-stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+        }
+        .payment-item {
+            text-align: center;
+        }
+        .payment-item h3 {
+            margin: 0;
+            color: #666;
+        }
+        .payment-item p {
+            margin: 10px 0 0;
+            font-size: 20px;
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>票务销售统计</h1>
+        </div>
+        
+        <div class="date-range">
+            <input type="date" id="startDate" value="2025-02-01">
+            <span>至</span>
+            <input type="date" id="endDate" value="2025-02-14">
+            <button onclick="loadData()">查询</button>
+        </div>
+
+        <div class="stats-container">
+            <div class="stat-card">
+                <h2>总销售额</h2>
+                <p id="totalPayment">¥0.00</p>
+            </div>
+            <div class="stat-card">
+                <h2>销售渠道统计</h2>
+                <div id="onlineChart" class="chart-container"></div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <h2>票种销售统计</h2>
+            <div id="ticketChart" class="chart-container"></div>
+            <div class="ticket-stats" id="ticketStats">
+                <!-- 票种统计数据将通过JavaScript动态填充 -->
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <h2>支付方式统计</h2>
+            <div class="payment-stats" id="paymentStats">
+                <!-- 支付方式统计数据将通过JavaScript动态填充 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 初始化图表
+        let onlineChart = echarts.init(document.getElementById('onlineChart'));
+        let ticketChart = echarts.init(document.getElementById('ticketChart'));
+
+        // 加载数据
+        function loadData() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            fetch(`/api/business-data/summary?startDate=${startDate}&endDate=${endDate}`)
+                .then(response => response.json())
+                .then(data => {
+                    updateTotalPayment(data.totalPayment);
+                    updateOnlineStats(data.onlineStats);
+                    updateTicketStats(data.ticketStats);
+                    updatePaymentStats(data.paymentStats);
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // 更新总销售额
+        function updateTotalPayment(amount) {
+            document.getElementById('totalPayment').textContent = 
+                `¥${amount.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        }
+
+        // 更新线上/线下统计
+        function updateOnlineStats(stats) {
+            const option = {
+                title: {
+                    text: '销售渠道分布',
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'item',
+                    formatter: '{b}: {c} ({d}%)'
+                },
+                legend: {
+                    orient: 'vertical',
+                    left: 'left'
+                },
+                series: [{
+                    type: 'pie',
+                    radius: '50%',
+                    data: [
+                        { value: stats.T || 0, name: '线上销售' },
+                        { value: stats.F || 0, name: '线下销售' }
+                    ],
+                    emphasis: {
+                        itemStyle: {
+                            shadowBlur: 10,
+                            shadowOffsetX: 0,
+                            shadowColor: 'rgba(0, 0, 0, 0.5)'
+                        }
+                    }
+                }]
+            };
+            onlineChart.setOption(option);
+        }
+
+        // 更新票种统计
+        function updateTicketStats(stats) {
+            const ticketTypes = {
+                '全价票': '#FF6384',
+                '半价票': '#36A2EB',
+                '团体票': '#FFCE56',
+                '老人免费票': '#4BC0C0',
+                '免费票': '#9966FF',
+                '网购票': '#FF9F40'
+            };
+
+            const data = Object.entries(stats).map(([name, value]) => ({
+                name,
+                value
+            }));
+
+            const option = {
+                title: {
+                    text: '票种销售分布',
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'item',
+                    formatter: '{b}: {c} 张'
+                },
+                legend: {
+                    orient: 'vertical',
+                    left: 'left'
+                },
+                series: [{
+                    type: 'pie',
+                    radius: '50%',
+                    data: data,
+                    emphasis: {
+                        itemStyle: {
+                            shadowBlur: 10,
+                            shadowOffsetX: 0,
+                            shadowColor: 'rgba(0, 0, 0, 0.5)'
+                        }
+                    }
+                }]
+            };
+            ticketChart.setOption(option);
+
+            // 更新票种统计卡片
+            const ticketStatsContainer = document.getElementById('ticketStats');
+            ticketStatsContainer.innerHTML = '';
+            Object.entries(stats).forEach(([name, count]) => {
+                const ticketItem = document.createElement('div');
+                ticketItem.className = 'ticket-item';
+                ticketItem.innerHTML = `
+                    <h3>${name}</h3>
+                    <p>${count}张</p>
+                `;
+                ticketStatsContainer.appendChild(ticketItem);
+            });
+        }
+
+        // 更新支付方式统计
+        function updatePaymentStats(stats) {
+            const paymentStatsContainer = document.getElementById('paymentStats');
+            paymentStatsContainer.innerHTML = `
+                <div class="payment-item">
+                    <h3>现金支付</h3>
+                    <p>${stats['现金支付'] || 0}笔</p>
+                </div>
+                <div class="payment-item">
+                    <h3>银联支付</h3>
+                    <p>${stats['银联支付'] || 0}笔</p>
+                </div>
+            `;
+        }
+
+        // 页面加载时自动加载数据
+        window.onload = function() {
+            loadData();
+            // 窗口大小改变时重绘图表
+            window.onresize = function() {
+                onlineChart.resize();
+                ticketChart.resize();
+            };
+        };
+    </script>
+</body>
+</html> 
